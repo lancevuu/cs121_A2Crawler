@@ -1,5 +1,6 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+from bs4 import BeautifulSoup
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
@@ -14,8 +15,19 @@ def extract_next_links(url, resp):
     # resp.raw_response: this is where the page actually is. More specifically, the raw_response has two parts:
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
+    if resp.status != 200 or not resp.raw_response:
+        return []
+    
+    parsed_content = BeautifulSoup(resp.raw_response.content, "html.parser") # parses html content from url (resp)
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-    return list()
+    hyperlinks = []
+    for tag in parsed_content.find_all("a", href=True):
+        absolute_url = urljoin(url, tag["href"])  # converts relative url to an abosolute url (joins the url with href tag for processing)
+        cleaned_url = absolute_url.split("#")[0]  # removes the fragment identifiers, avoiding duplicate urls (doesn't change document)
+        
+        hyperlinks.append(cleaned_url) # adds fixed url to hyperlinks list
+    
+    return hyperlinks # returns all hyperlinks found within the resp url
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
@@ -25,6 +37,18 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
+        
+        # Domains needed to be scraped
+        domains = [
+            "ics.uci.edu",
+            "cs.uci.edu",
+            "informatics.uci.edu",
+            "stat.uci.edu"
+        ]
+
+        if not any(parsed.netloc.endswith(domain) for domain in domains): # checks to see if url is within domain
+            return False 
+
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
